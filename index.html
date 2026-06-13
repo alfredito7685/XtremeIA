@@ -663,7 +663,7 @@
       <div class="tab-bar">
         <button class="tab-btn active" onclick="filterPreguntas('UNANSWERED', this)">Sin responder</button>
         <button class="tab-btn" onclick="filterPreguntas('ANSWERED', this)">Respondidas</button>
-        <button class="tab-btn" onclick="filterPreguntas('ALL', this)">Todas</button>
+        <button class="tab-btn" onclick="filterPreguntas('ALL', this)" id="tab-todas">Todas</button>
       </div>
       <div class="card">
         <div class="card-header">
@@ -673,6 +673,7 @@
               <option value="desc">Más recientes primero</option>
               <option value="asc">Más antiguas primero</option>
             </select>
+            <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px" onclick="actualizarPreguntas()">🔄 Actualizar</button>
             <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="responderTodasConIA()">✨ Responder todas con IA</button>
           </div>
         </div>
@@ -969,16 +970,18 @@ async function loadDashboard() {
 
   // Preguntas
   try {
-    const qs = await mlFetch(`https://api.mercadolibre.com/questions/search?seller_id=${userId}&status=UNANSWERED&limit=50`);
+    const qs = await mlFetch(`https://api.mercadolibre.com/questions/search?seller_id=${userId}&limit=50`);
     allPreguntas = qs.questions || [];
-    document.getElementById('m-preguntas').textContent = qs.total || 0;
-    if ((qs.total || 0) > 0) {
+    const pendientes = allPreguntas.filter(q => q.status === 'UNANSWERED');
+    document.getElementById('m-preguntas').textContent = pendientes.length;
+    if (pendientes.length > 0) {
       document.getElementById('md-preguntas').innerHTML = `<span class="delta-down">⚠ requieren respuesta</span>`;
     } else {
       document.getElementById('md-preguntas').innerHTML = `<span class="delta-up">✓ Al día</span>`;
     }
-    renderDashPreguntas(qs.questions.slice(0, 3));
-    renderPreguntas(allPreguntas);
+    renderDashPreguntas(pendientes.slice(0, 3));
+    const filtered = currentFilter === 'ALL' ? allPreguntas : allPreguntas.filter(q => q.status === currentFilter);
+    renderPreguntas(filtered);
   } catch(e) {}
 
   // Reputación
@@ -1129,6 +1132,25 @@ async function loadPreguntas(status = 'UNANSWERED') {
   } catch(e) {
     c.innerHTML = '<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Error cargando preguntas</div></div>';
   }
+}
+
+async function actualizarPreguntas() {
+  if (!accessToken) return showToast('Conecta tu ML Access Token primero');
+  if (!userId) {
+    try {
+      const me = await mlFetch('https://api.mercadolibre.com/users/me');
+      userId = me.id;
+    } catch(e) {
+      return showToast('❌ No se pudo conectar con MercadoLibre');
+    }
+  }
+  // Cambia a "Todas" para mostrar cualquier pregunta nueva sin importar su estado
+  currentFilter = 'ALL';
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const todasBtn = document.getElementById('tab-todas');
+  if (todasBtn) todasBtn.classList.add('active');
+  await loadPreguntas('ALL');
+  showToast('✅ Preguntas actualizadas');
 }
 
 function ordenarPreguntas(order) {
