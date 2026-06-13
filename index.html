@@ -1557,4 +1557,90 @@ async function sendChat() {
       document.getElementById(thinkingId).remove();
       return;
     }
-    const res = awai
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        system: 'Eres un asistente experto en ventas de MercadoLibre México. Ayudas a vendedores a mejorar sus publicaciones, estrategia de precios, atención al cliente y reputación. Responde en español, de forma práctica y concisa.',
+        messages: chatHistory
+      })
+    });
+    if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message||'Error'); }
+    const data = await res.json();
+    const reply = data.content[0].text;
+    document.getElementById(thinkingId).remove();
+    appendMsg('ai', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+  } catch(e) {
+    if (document.getElementById(thinkingId)) document.getElementById(thinkingId).remove();
+    appendMsg('ai', '❌ ' + (e.message || 'Error desconocido. Verifica tu Anthropic API Key.'));
+  }
+}
+
+function appendMsg(role, text) {
+  const c = document.getElementById('chatMessages');
+  c.insertAdjacentHTML('beforeend', `<div class="msg msg-${role}">${text.replace(/\n/g,'<br>')}</div>`);
+  scrollChat();
+}
+
+function scrollChat() {
+  const c = document.getElementById('chatMessages');
+  c.scrollTop = c.scrollHeight;
+}
+
+// ─────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────
+function formatNumber(n) {
+  if (!n && n !== 0) return '—';
+  return Number(n).toLocaleString('es-MX');
+}
+
+function timeAgo(dateStr) {
+  const diff = (Date.now() - new Date(dateStr)) / 1000;
+  if (diff < 3600) return Math.floor(diff/60) + 'm';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h';
+  return Math.floor(diff/86400) + 'd';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────
+// AUTO-RESTORE KEYS ON LOAD
+// ─────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  const savedToken = localStorage.getItem('ml_access_token');
+  if (savedToken) {
+    document.getElementById('tokenInput').value = savedToken;
+    accessToken = savedToken;
+    document.getElementById('statusDot').className = 'status-dot connected';
+    document.getElementById('statusText').textContent = 'Reconectando...';
+    document.getElementById('statusText').style.color = 'rgba(255,255,255,0.6)';
+    loadAll();
+  }
+  const savedKey = localStorage.getItem('anthropic_key');
+  if (savedKey) {
+    document.getElementById('anthropicKeyInput').value = savedKey;
+    anthropicKey = savedKey;
+    document.getElementById('anthropicDot').className = 'status-dot connected';
+    document.getElementById('anthropicText').textContent = 'Claude listo ✓';
+    document.getElementById('anthropicText').style.color = '#4ADE80';
+  }
+});
+</script>
+</body>
+</html>
