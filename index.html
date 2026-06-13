@@ -532,9 +532,6 @@
     <button class="nav-btn" onclick="showSection('buscar')" id="nav-buscar">
       <span class="icon">🔍</span> Buscar productos
     </button>
-    <button class="nav-btn" onclick="showSection('prohibidas')" id="nav-prohibidas">
-      <span class="icon">🚫</span> Prohibidas
-    </button>
     <button class="nav-btn" onclick="showSection('comparar')" id="nav-comparar">
       <span class="icon">⚖️</span> Comparar precios
     </button>
@@ -671,7 +668,13 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">💬 Preguntas de compradores</div>
-          <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="responderTodasConIA()">✨ Responder todas con IA</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="preguntasOrden" onchange="ordenarPreguntas(this.value)">
+              <option value="desc">Más recientes primero</option>
+              <option value="asc">Más antiguas primero</option>
+            </select>
+            <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="responderTodasConIA()">✨ Responder todas con IA</button>
+          </div>
         </div>
         <div class="card-body" id="preguntasList">
           <div class="empty-state"><div class="empty-icon">💬</div><div class="empty-title">Sin preguntas</div><div class="empty-desc">Conecta tu Access Token para ver las preguntas de tus compradores</div></div>
@@ -700,11 +703,11 @@
     <div class="section" id="section-prohibidas">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">🚫 Publicaciones con infracción — "El producto está prohibido"</div>
+          <div class="card-title">🚫 Publicaciones con infracciones</div>
           <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="cargarProhibidas()">🔄 Revisar ahora</button>
         </div>
         <div class="card-body" id="prohibidasList">
-          <div class="empty-state"><div class="empty-icon">🚫</div><div class="empty-title">Presiona "Revisar ahora"</div><div class="empty-desc">Se buscarán tus publicaciones con la infracción "El producto está prohibido"</div></div>
+          <div class="empty-state"><div class="empty-icon">🚫</div><div class="empty-title">Presiona "Revisar ahora"</div><div class="empty-desc">Se buscarán tus publicaciones en revisión, pausadas o con infracciones (incluyendo "El producto está prohibido")</div></div>
         </div>
       </div>
     </div>
@@ -728,19 +731,6 @@
           <div id="searchResults">
             <div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">Busca en tus publicaciones</div><div class="empty-desc">Escribe una palabra clave de tus productos</div></div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PROHIBIDAS -->
-    <div class="section" id="section-prohibidas">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">🚫 Publicaciones prohibidas</div>
-          <button class="btn btn-primary" style="font-size:11px;padding:5px 12px" onclick="cargarProhibidas()">↻ Actualizar</button>
-        </div>
-        <div class="card-body" id="prohibidasList">
-          <div class="empty-state"><div class="empty-icon">🚫</div><div class="empty-title">Cargando...</div><div class="empty-desc">Conecta tu token para ver publicaciones con infracciones</div></div>
         </div>
       </div>
     </div>
@@ -806,6 +796,7 @@ let anthropicKey = '';
 let userId = '';
 let allPreguntas = [];
 let currentFilter = 'UNANSWERED';
+let preguntasSortOrder = 'desc';
 
 // Anthropic API Key
 function saveAnthropicKey() {
@@ -856,7 +847,7 @@ async function claudeFetch(system, userMsg, maxTokens = 1000) {
 // ─────────────────────────────────────
 const titles = {
   dashboard: 'Resumen', preguntas: 'Preguntas', publicaciones: 'Mis publicaciones',
-  prohibidas: '🚫 Publicaciones Prohibidas', buscar: 'Buscar productos', 
+  prohibidas: '🚫 Publicaciones con infracciones', buscar: 'Buscar productos', 
   comparar: 'Comparar precios', oportunidades: 'Oportunidades', asistente: 'Asistente IA'
 };
 
@@ -877,7 +868,6 @@ function showSection(name) {
   if (name === 'preguntas' && accessToken && userId) loadPreguntas('UNANSWERED');
   if (name === 'prohibidas') { if (accessToken && userId) cargarProhibidas(); else if (accessToken) setTimeout(()=>{ if(userId) cargarProhibidas(); }, 2000); }
   if (name === 'oportunidades' && accessToken && userId) analizarOportunidades();
-  if (name === 'prohibidas' && accessToken && userId) cargarProhibidas();
 }
 
 // ─────────────────────────────────────
@@ -1141,13 +1131,24 @@ async function loadPreguntas(status = 'UNANSWERED') {
   }
 }
 
+function ordenarPreguntas(order) {
+  preguntasSortOrder = order;
+  const filtered = currentFilter === 'ALL' ? allPreguntas : allPreguntas.filter(q => q.status === currentFilter);
+  renderPreguntas(filtered);
+}
+
 function renderPreguntas(questions) {
   const c = document.getElementById('preguntasList');
   if (!questions.length) {
     c.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">¡Todo respondido!</div><div class="empty-desc">No hay preguntas en esta categoría</div></div>';
     return;
   }
-  c.innerHTML = questions.map((q, i) => `
+  const sorted = [...questions].sort((a, b) => {
+    const da = new Date(a.date_created).getTime();
+    const db = new Date(b.date_created).getTime();
+    return preguntasSortOrder === 'asc' ? da - db : db - da;
+  });
+  c.innerHTML = sorted.map((q, i) => `
     <div class="question-item" id="q-${q.id}">
       <div class="question-header">
         <div class="question-text">❓ ${q.text}</div>
@@ -1157,14 +1158,44 @@ function renderPreguntas(questions) {
         ${q.status === 'UNANSWERED' ? '<span class="badge badge-yellow" style="margin-left:6px">Sin responder</span>' : '<span class="badge badge-green" style="margin-left:6px">Respondida</span>'}
       </div>
       ${q.answer ? `<div style="font-size:12px;color:var(--text2);padding:8px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--ml-green)">✅ ${q.answer.text}</div>` : ''}
-      ${q.status === 'UNANSWERED' ? `
-        <div class="answer-actions">
-          <button class="btn-xs btn-xs-primary" onclick="generarRespuestaIA('${q.id}', '${q.item_id}', \`${q.text.replace(/`/g,"'")}\`)">✨ Generar respuesta con IA</button>
-        </div>
-        <div id="ai-wrap-${q.id}"></div>
-      ` : ''}
+      <div class="answer-actions">
+        ${q.status === 'UNANSWERED' ? `<button class="btn-xs btn-xs-primary" onclick="generarRespuestaIA('${q.id}', '${q.item_id}', \`${q.text.replace(/`/g,"'")}\`)">✨ Generar respuesta con IA</button>` : ''}
+        <button class="btn-xs btn-xs-danger" onclick="eliminarPregunta('${q.id}')">🗑️ Eliminar</button>
+      </div>
+      ${q.status === 'UNANSWERED' ? `<div id="ai-wrap-${q.id}"></div>` : ''}
     </div>
   `).join('');
+}
+
+async function eliminarPregunta(qId) {
+  if (!accessToken) return showToast('Necesitas conectar tu cuenta para eliminar preguntas');
+  if (!confirm('¿Eliminar esta pregunta de forma permanente? Esta acción no se puede deshacer.')) return;
+
+  const item = document.getElementById('q-' + qId);
+  if (item) item.style.opacity = '0.5';
+
+  try {
+    const res = await fetch(`https://api.mercadolibre.com/questions/${qId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + accessToken }
+    });
+    if (res.ok) {
+      showToast('🗑️ Pregunta eliminada');
+      allPreguntas = allPreguntas.filter(q => String(q.id) !== String(qId));
+      const filtered = currentFilter === 'ALL' ? allPreguntas : allPreguntas.filter(q => q.status === currentFilter);
+      renderPreguntas(filtered);
+      const pendientes = allPreguntas.filter(q => q.status === 'UNANSWERED').length;
+      const mPreguntas = document.getElementById('m-preguntas');
+      if (mPreguntas) mPreguntas.textContent = pendientes;
+    } else {
+      const err = await res.json().catch(()=>({}));
+      showToast('❌ Error: ' + (err.message || 'No se pudo eliminar la pregunta'));
+      if (item) item.style.opacity = '1';
+    }
+  } catch(e) {
+    showToast('❌ Error de conexión');
+    if (item) item.style.opacity = '1';
+  }
 }
 
 async function generarRespuestaIA(qId, itemId, question) {
@@ -1281,74 +1312,6 @@ async function filtrarPublicaciones(status) {
     }).join('');
   } catch(e) {
     c.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Error cargando publicaciones</div><div class="empty-desc">${e.message}</div></div>`;
-  }
-}
-
-// ─────────────────────────────────────
-// PUBLICACIONES PROHIBIDAS
-// ─────────────────────────────────────
-async function cargarProhibidas() {
-  if (!accessToken) return showToast('Conecta tu ML Access Token primero');
-  const c = document.getElementById('prohibidasList');
-  c.innerHTML = '<div class="loading-block"><div class="spinner"></div>Buscando publicaciones prohibidas...</div>';
-  try {
-    if (!userId) {
-      const me = await mlFetch('https://api.mercadolibre.com/users/me');
-      userId = me.id;
-    }
-    // Fetch items with policy violation
-    const res = await mlFetch(`https://api.mercadolibre.com/users/${userId}/items/search?tags=incomplete&limit=100`);
-    const allIds = res.results || [];
-    
-    if (!allIds.length) {
-      c.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Sin infracciones</div><div class="empty-desc">No encontramos publicaciones con infracciones activas</div></div>';
-      return;
-    }
-
-    // Fetch details and filter by violation reason
-    let prohibidas = [];
-    for (let i = 0; i < allIds.length; i += 20) {
-      const batch = allIds.slice(i, i+20).join(',');
-      const data = await mlFetch(`https://api.mercadolibre.com/items?ids=${batch}&attributes=id,title,price,thumbnail,status,health,sub_status`);
-      const items = (data || []).map(d => d.body).filter(Boolean);
-      // Filter items that have "El producto está prohibido" sub_status
-      const filtered = items.filter(item => {
-        const subs = item.sub_status || [];
-        return subs.includes('out_of_stock_variation') || 
-               subs.includes('deleted') || 
-               item.health === 0 ||
-               item.status === 'under_review' ||
-               item.status === 'inactive';
-      });
-      prohibidas = prohibidas.concat(items); // show all incomplete for now
-    }
-
-    if (!prohibidas.length) {
-      c.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">Sin infracciones detectadas</div><div class="empty-desc">No encontramos publicaciones prohibidas</div></div>';
-      return;
-    }
-
-    c.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:12px;padding:10px;background:var(--surface2);border-radius:8px">⚠️ Se encontraron <strong>${prohibidas.length}</strong> publicaciones con posibles infracciones. Revisa cuáles dicen "El producto está prohibido" en MercadoLibre.</div>` +
-    prohibidas.map(item => {
-      const mlLink = `https://articulo.mercadolibre.com.mx/${item.id}`;
-      const statusColor = item.status === 'active' ? 'badge-green' : item.status === 'paused' ? 'badge-yellow' : 'badge-red';
-      return `<div class="product-item">
-        <img class="product-img" src="${item.thumbnail||''}" onerror="this.style.display='none'" />
-        <div class="product-info">
-          <div class="product-title">${item.title||'Sin título'}</div>
-          <div class="product-price">$${formatNumber(item.price)}</div>
-          <div class="product-meta" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px">
-            <span class="badge ${statusColor}">${item.status}</span>
-            <span style="font-size:10px;color:var(--text3);font-family:monospace">${item.id}</span>
-            ${(item.sub_status||[]).length ? `<span class="badge badge-red">${item.sub_status.join(', ')}</span>` : ''}
-            <a href="${mlLink}" target="_blank" style="color:var(--ml-blue);font-size:11px">Ver en ML →</a>
-            <a href="https://www.mercadolibre.com.mx/my_account/listings/prohibited" target="_blank" style="color:var(--ml-red);font-size:11px">Ver infracciones →</a>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  } catch(e) {
-    c.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-title">Error</div><div class="empty-desc">${e.message}</div></div>`;
   }
 }
 
@@ -1594,90 +1557,4 @@ async function sendChat() {
       document.getElementById(thinkingId).remove();
       return;
     }
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        system: 'Eres un asistente experto en ventas de MercadoLibre México. Ayudas a vendedores a mejorar sus publicaciones, estrategia de precios, atención al cliente y reputación. Responde en español, de forma práctica y concisa.',
-        messages: chatHistory
-      })
-    });
-    if (!res.ok) { const e = await res.json().catch(()=>{}); throw new Error(e?.error?.message||'Error'); }
-    const data = await res.json();
-    const reply = data.content[0].text;
-    document.getElementById(thinkingId).remove();
-    appendMsg('ai', reply);
-    chatHistory.push({ role: 'assistant', content: reply });
-  } catch(e) {
-    if (document.getElementById(thinkingId)) document.getElementById(thinkingId).remove();
-    appendMsg('ai', '❌ ' + (e.message || 'Error desconocido. Verifica tu Anthropic API Key.'));
-  }
-}
-
-function appendMsg(role, text) {
-  const c = document.getElementById('chatMessages');
-  c.insertAdjacentHTML('beforeend', `<div class="msg msg-${role}">${text.replace(/\n/g,'<br>')}</div>`);
-  scrollChat();
-}
-
-function scrollChat() {
-  const c = document.getElementById('chatMessages');
-  c.scrollTop = c.scrollHeight;
-}
-
-// ─────────────────────────────────────
-// UTILS
-// ─────────────────────────────────────
-function formatNumber(n) {
-  if (!n && n !== 0) return '—';
-  return Number(n).toLocaleString('es-MX');
-}
-
-function timeAgo(dateStr) {
-  const diff = (Date.now() - new Date(dateStr)) / 1000;
-  if (diff < 3600) return Math.floor(diff/60) + 'm';
-  if (diff < 86400) return Math.floor(diff/3600) + 'h';
-  return Math.floor(diff/86400) + 'd';
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ─────────────────────────────────────
-// AUTO-RESTORE KEYS ON LOAD
-// ─────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-  const savedToken = localStorage.getItem('ml_access_token');
-  if (savedToken) {
-    document.getElementById('tokenInput').value = savedToken;
-    accessToken = savedToken;
-    document.getElementById('statusDot').className = 'status-dot connected';
-    document.getElementById('statusText').textContent = 'Reconectando...';
-    document.getElementById('statusText').style.color = 'rgba(255,255,255,0.6)';
-    loadAll();
-  }
-  const savedKey = localStorage.getItem('anthropic_key');
-  if (savedKey) {
-    document.getElementById('anthropicKeyInput').value = savedKey;
-    anthropicKey = savedKey;
-    document.getElementById('anthropicDot').className = 'status-dot connected';
-    document.getElementById('anthropicText').textContent = 'Claude listo ✓';
-    document.getElementById('anthropicText').style.color = '#4ADE80';
-  }
-});
-</script>
-</body>
-</html>
+    const res = awai
